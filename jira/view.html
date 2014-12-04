@@ -1,0 +1,531 @@
+<HTML>
+<HEAD>
+<TITLE>Scrum Summary</TITLE>
+<meta http-equiv="refresh" content="7200">
+<META NAME="Author" CONTENT="?">
+<META NAME="Keywords" CONTENT="?">
+<META NAME="Description" CONTENT="?">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<link rel="stylesheet" href="css/viewStyle.css">
+<!--<script type="text/javascript" language="JavaScript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js"></script>-->
+<script type="text/javascript" language="JavaScript" src="./scripts/jQuery_v1.8.3.js"></script>
+<script type="text/javascript" language="JavaScript" src="./scripts/utils.js"></script>
+<BODY BGCOLOR="#FFFFFF" TEXT="#000000" LINK="#FF0000" VLINK="#800000" ALINK="#FF00FF" BACKGROUND="?">
+<!-- an actual table, but then this data is arguably tabular-->
+<table class="TFtable">
+    <tr><td>
+        <div id="dataDiv1" class="info"></div><div id="imgDiv1"></div><div id="hChk1" class="hChk"></div><div id="velDiv1"></div><div class="stats" id="statsDiv1"></div>
+    </td><td>
+        <div id="dataDiv2" class="info"></div><div id="imgDiv2"></div><div id="hChk2" class="hChk"></div><div id="velDiv2"></div><div class="stats" id="statsDiv2"></div>
+    </td></tr>
+    <tr><td>    
+        <div id="dataDiv3" class="info"></div><div id="imgDiv3"></div><div id="hChk3" class="hChk"></div><div id="velDiv3"></div><div class="stats" id="statsDiv3"></div>
+    </td><td>
+        <div id="dataDiv4" class="info"></div><div id="imgDiv4"></div><div id="hChk4" class="hChk"></div><div id="velDiv4"></div><div class="stats" id="statsDiv4"></div>
+    </td></tr>
+    <tr><td>
+        <div id="dataDiv5" class="info"></div><div id="imgDiv5"></div><div id="hChk5" class="hChk"></div><div id="velDiv5"></div><div class="stats" id="statsDiv5"></div>
+    </td><td>
+        <div id="dataDiv6" class="info"></div><div id="imgDiv6"></div><div id="hChk6" class="hChk"></div><div id="velDiv6"></div><div class="stats" id="statsDiv6"></div>
+    </td>
+    </tr>
+   <tr><td>
+        <div id="dataDiv7" class="info"></div><div id="imgDiv7"></div><div id="hChk7" class="hChk"></div><div id="velDiv7"></div><div class="stats" id="statsDiv7"></div>
+    </td><td>
+        <div id="dataDiv8" class="info"></div><div id="imgDiv8"></div><div id="hChk8" class="hChk"></div><div id="velDiv8"></div><div class="stats" id="statsDiv8"></div>
+    </td>
+    </tr>
+</table>
+<div id="coverageCheck">----</div>
+
+<script type="text/javascript">
+//
+// little DB of team info
+//
+var teamData = '{ "teams" : [' +
+                '{ "teamName":"Business"      , "teamId":"34"  , "targetRow":"1", "sprintIds": ["289","282","277","264"]},' +
+                '{ "teamName":"Reliability1"  , "teamId":"154" , "targetRow":"2", "sprintIds": ["283","279","270","260"]},' +
+                '{ "teamName":"Reliability2"  , "teamId":"139" , "targetRow":"3", "sprintIds": ["281","280","265","256","246"]},' +
+                '{ "teamName":"Wallet"        , "teamId":"92"  , "targetRow":"4", "sprintIds": ["292","284","275","267","258"]},' +
+                '{ "teamName":"Launch"        , "teamId":"94"  , "targetRow":"5", "sprintIds": ["295","276","273","266","259"]} ]}';
+
+var scrumDb = JSON.parse(teamData);
+
+//
+// Splices images and igrames into the table above
+// sometimes images sometimes iFrames (depending on querystring)
+//   The burndown is an Iframe to a jira widget
+//   The heathcheck is an Iframe to a jira widget
+//   The burndown history is an image as there's no wideget for it : 
+//          the image is created created manially using a firefox plugin called 'grab them all' and then copied to the right directory 
+//          with a shell script that moves the images to the correct subfolder named by week number
+//          There must abe a better way to automate getting screen grabs automtically on a cron or whatever - but not found a good one
+//
+// The 'grab them all' also drop burndown images and healtheck images - these get used if we look at historical 
+//      data by appending 'sprintsAgo=xx' querystring parameter to the page URL
+//
+function populateImages(sprintsAgo, weeksAgo){
+    var targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - (weeksAgo * 7) );
+    //
+    // note unix weeknumber seems to one behind the one calculated in Javascript - sync them clumsily
+    //
+    var weekNumber = targetDate.getWeek() -1 ;
+    var dateString = targetDate.getFullYear() + ("0" + (targetDate.getMonth() + 1)).slice(-2) + ("0" + targetDate.getDate()).slice(-2);
+    var jj =1;      
+    for (var ii = 0; ii < scrumDb.teams.length; ii++) {
+        //
+        // Create a link to the scrums burndown for for the most recent sprint
+        //
+        var aLink = document.createElement("a");
+        aLink.setAttribute("target","_blank");
+        aLink.setAttribute("href", "https://hailo.jira.com/secure/RapidBoard.jspa?rapidView=" + scrumDb.teams[ii].teamId + "&view=reporting&chart=burndownChart");
+        var linkText = document.createTextNode(scrumDb.teams[ii].teamName);
+        aLink.appendChild(linkText);
+        if (typeof(document.getElementById("dataDiv" + jj)) != undefined)
+        {
+            document.getElementById("dataDiv" + jj).appendChild(aLink);
+        }
+        //
+        // For today we draw Ifrmes to the live gadgets
+        // For historical info - where we've specific how many days to go back we need to look up old snapshotted images and use those instead
+        //
+        if (weeksAgo < 1) {
+            //
+            //  Get the burndown gadget into iframe(gadgets are allowed in IFrames)
+            //
+
+            var sprintId = "auto";
+            //
+            // Had hoped to do historical sprints - but athough this Id code works - the jira gadget only accepts the latest 'auto' sprint
+            // with all the others Ids it just says "sprint is not active" : I cannot figure out to fix it as its a black box
+            //
+            //if (sprintsAgo > 0 ) {
+            //    if (scrumDb.teams[ii].sprintIds.length > (sprintsAgo) ) {
+            //        sprintId = scrumDb.teams[ii].sprintIds[sprintsAgo]
+            //    }
+            //}
+            var elem = document.createElement("iframe");
+            elem.setAttribute("class", "burn");
+            elem.setAttribute("src", "https://hailo.jira.com/plugins/servlet/gadgets/ifr?container=atlassian&mid=17203&up_isConfigured=true&up_rapidViewId=" + scrumDb.teams[ii].teamId + "&up_sprintId=" + sprintId + "&up_showSprintName=true&up_refresh=120&url=https%3A%2F%2Fhailo.jira.com%2Frest%2Fgadgets%2F1.0%2Fg%2Fcom.pyxis.greenhopper.jira%3Agreenhopper-gadget-sprint-burndown%2Fgadgets%2Fgreenhopper-sprint-burndown.xml&libs=auth-refresh#rpctoken=2925997");
+            if (document.getElementById("imgDiv" + jj) != undefined)
+            {
+                document.getElementById("imgDiv" + jj).appendChild(elem);
+            }
+            
+            //
+            // Get the healthcheck gadget (gadgets are allowed in IFrames)
+            //
+            var elem3 = document.createElement("iframe");
+            elem3.setAttribute("class", "hChk");
+            elem3.setAttribute("src", "https://hailo.jira.com/plugins/servlet/gadgets/ifr?container=atlassian&mid=17208&up_isConfigured=true&up_rapidViewId=" + scrumDb.teams[ii].teamId + "&up_sprintId=" + sprintId + "&url=https%3A%2F%2Fhailo.jira.com%2Frest%2Fgadgets%2F1.0%2Fg%2Fcom.pyxis.greenhopper.jira%3Agreenhopper-gadget-sprint-health%2Fgadgets%2Fgreenhopper-sprint-health.xml");
+            if (document.getElementById("hChk" + jj) != undefined)
+            {
+                document.getElementById("hChk" + jj).appendChild(elem3);
+            }
+        } else {
+           //
+            //  Get the burndown historical image from the file system where we store a copy by ruuing 'grabthemAll' firefox plugin
+            //  every week
+            //
+            var elem = document.createElement("img");
+            //elem.setAttribute("width", 400); 
+            elem.setAttribute("src", "./data/week" + weekNumber + "/jiraImages/https_hailo.jira.com_secure_RapidBoard.jspa_rapidView_" + scrumDb.teams[ii].teamId + "_view_reporting_chart_burndownChart.png");
+            var wrapperDiv = document.getElementById("imgDiv" + jj);
+            if (wrapperDiv != undefined)
+            {
+                $("#imgDiv" + jj).addClass("croppedBurnImg");
+                wrapperDiv.appendChild(elem);
+            }
+            
+            //
+            // Get the healthcheck historical image
+            // http_localhost_8000_jira_frameForHealth.html_scrumIds_34.png
+            var elem3 = document.createElement("img");
+            elem3.setAttribute("src", "./data/week" + weekNumber + "/jiraImages/http_localhost_8000_jira_frameForHealth.html_scrumIds_" + scrumDb.teams[ii].teamId + ".png");
+            var wrapperDivHck = document.getElementById("hChk" + jj);
+            if (wrapperDivHck != undefined)
+            {
+                wrapperDivHck.appendChild(elem3);
+                //$("#hChk" + jj).addClass("crop").removeClass("burn");
+            }
+  
+        }
+
+        //
+        // Get the velocity scrum report (these top level reports are NOT allowed in IFrames, so use 'grab them all' firefox plugin to screen grab the URLs)
+        // for the report and drop them on disk as images - needs to be done once a day/ week.
+        // We used to do this for the burndowns too - and in fact still capture those images.
+        // Note the velocity is cached for a week
+        //
+        var elem2 = document.createElement("img");
+        elem2.setAttribute("src", "./data/week" + weekNumber + "/jiraImages/https_hailo.jira.com_secure_RapidBoard.jspa_rapidView_" + scrumDb.teams[ii].teamId + "_view_reporting_chart_velocityChart.png");
+        var wrapperDivVelocity = document.getElementById("velDiv" + jj);
+        if (wrapperDivVelocity != undefined)
+        {
+            wrapperDivVelocity.appendChild(elem2);
+            $("#velDiv" + jj).addClass("vel");
+        }
+
+        //
+        // Now capture some basic counts of items by running som Jira JQLs and doing very basic parsing of the JSON returned
+        //
+        //getJiraCount("./data/week" + weekNumber + "/jiraJson/jiraJson." + scrumDb.teams[ii].teamId + ".blocker.json","#dataDiv" + jj);   
+        jj++
+    }
+    createTestSummary (weekNumber)     
+}
+//
+// Parse the querystring params : sprintsAgo=1 means show data for the last sprint. 
+// This breaks down very quickly though as we keep renaming teams in Jira
+//
+var sprintsAgo=getParameterByName('sprintsAgo',0);
+var weeksAgo=getParameterByName('weeksAgo',0);
+populateImages(sprintsAgo, weeksAgo);
+
+
+//
+// Global var to store the parsed team json - populated in the successful ajax call method
+//
+var global_teams = new Array ()
+
+
+//
+// Put the headline coverage data onto the page
+//
+function parseCoverageStatsOntoPage (teamShortName) {
+    for (var ii = 0; ii < scrumDb.teams.length; ii++) {
+        for (var jj = 0; jj < global_teams.length; jj++) {
+            if (scrumDb.teams[ii].teamName == global_teams[jj].shortName) {
+                if (typeof(teamShortName) == "undefined" || global_teams[jj].shortName == teamShortName) {
+                    $("#statsDiv" + scrumDb.teams[ii].targetRow).html(global_teams[jj].toString());
+                }
+            }
+        }
+    }
+}
+
+//
+// Show the services sub compnent of code coverage
+//
+function showServices (teamShortName) {
+
+    for (var ii = 0; ii < scrumDb.teams.length; ii++) {
+        //console.log(scrumDb.teams[ii].teamName + "<==>" + global_teams.length);
+        for (var jj = 0; jj < global_teams.length; jj++) {
+            if (scrumDb.teams[ii].teamName == global_teams[jj].shortName) {
+                if (global_teams[jj].shortName == teamShortName) {
+                    $("#statsDiv" + scrumDb.teams[ii].targetRow).html(global_teams[jj].listServices());    
+                }
+                
+            }
+        }
+    }
+}
+
+//
+// Show the packages sub compnent of code coverage
+//
+function showPackages(teamShortName, serviceShortName) {
+    //console.log (teamShortName + serviceShortName);
+    for (var ii = 0; ii < scrumDb.teams.length; ii++) {
+        for (var jj = 0; jj < global_teams.length; jj++) {
+            if (scrumDb.teams[ii].teamName == global_teams[jj].shortName) {
+                for (var kk = 0; kk < global_teams[jj].services.length; kk++) {
+                    if (global_teams[jj].services[kk].shortName == serviceShortName) {
+                        $("#statsDiv" + scrumDb.teams[ii].targetRow).html(global_teams[jj].services[kk].listPackages(global_teams[jj].shortName));
+                    }
+                }
+            }
+        }
+    }
+}
+
+//
+// Show the package sub items of code coverage
+//
+function showPackage(teamShortName, serviceShortName, packageShortName) {
+    //console.log (teamShortName + serviceShortName + packageShortName);
+    for (var ii = 0; ii < scrumDb.teams.length; ii++) {
+        for (var jj = 0; jj < global_teams.length; jj++) {
+            if (scrumDb.teams[ii].teamName == global_teams[jj].shortName) {
+                for (var kk = 0; kk < global_teams[jj].services.length; kk++) {
+                    if (global_teams[jj].services[kk].shortName == serviceShortName) {
+                        for (var mm = 0; mm < global_teams[jj].services[kk].packages.length; mm++) {
+                            if (global_teams[jj].services[kk].packages[mm].shortName == packageShortName) {
+                                $("#statsDiv" + scrumDb.teams[ii].targetRow).html(global_teams[jj].services[kk].packages[mm].toString(teamShortName));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+//
+// Define a Team object proto
+//
+function Team (shortName, services) {
+    this.shortName = shortName;
+    this.services = services;
+}
+Team.prototype.toString = function() {
+    return "<a onClick='showServices(\"" +this.shortName + "\")'>" + this.shortName + " test stats</a></br>Owns: " + this.services.length + " services</br>of which: " + this.coverageStats('servicesWithoutPackages') + " have no packages</br>Total # of Packages: " + this.coverageStats('totalPackages') + "</br>Average % coverage overall: " + this.coverageStats('overall') + " </br>Average % coverage on covered packages: " + this.coverageStats('whereCoverageExists') + "</br>#packages with Increasing coverage: " + this.coverageStats('increasing') + "</br>#packages with Decreasing coverage: " + this.coverageStats('decreasing') + "</br>#packages with unchanged coverage: " + this.coverageStats('static') + "</br>Average % improvement/month(10 max): " + this.coverageStats('averageOfAveragePackageImprovement');
+};
+
+Team.prototype.listServices = function() {
+    var output = "Services:</br>";
+    if (typeof(this.services) != "undefined") {
+        for (var ii = 0; ii < this.services.length ; ii++) {
+            output += "<a onClick='showPackages(\"" +this.shortName + "\",\"" + this.services[ii].shortName + "\")'>" + this.services[ii].shortName + "&nbsp;[" + this.services[ii].packages.length + " pkgs]</a></br>"
+        }
+    }
+    return output + "</br><a onClick='parseCoverageStatsOntoPage(\"" + this.shortName  + "\")'>^ top ^</a>";
+};
+
+
+Team.prototype.coverageStats = function(statsType) {
+    var score = 0;
+    var servicesWithoutPackages = 0;
+    var totalPackages = 0;
+    var numberIncreasing = 0;
+    var numberDecreasing = 0;
+    var numberStatic = 0;
+    var sumOfAverageImprovementPerMonth = 0
+    for (var ii = 0; ii < this.services.length ; ii++) {
+        var packagesLen = this.services[ii].packages.length;   
+        totalPackages += packagesLen;
+        if (packagesLen == 0) {
+            servicesWithoutPackages++;
+        } else {
+            for (var jj = 0; jj < packagesLen ; jj++) {
+                score += this.services[ii].packages[jj].endCoveragePercentage;
+                if (this.services[ii].packages[jj].endCoveragePercentage > this.services[ii].packages[jj].startCoveragePercentage) {
+                    numberIncreasing ++
+                } else if (this.services[ii].packages[jj].endCoveragePercentage == this.services[ii].packages[jj].startCoveragePercentage) {
+                    numberStatic ++
+                } else {
+                    numberDecreasing ++
+                }
+                sumOfAverageImprovementPerMonth += this.services[ii].packages[jj].averageImprovementPerMonth;
+                //console.log(this.shortName + " service: " + this.services[ii].shortName + " package: " + this.services[ii].packages[jj].toString())
+            }
+        }
+    }
+    var result
+    switch (statsType) {
+        case "overall":
+            result = Math.floor( score / (totalPackages + servicesWithoutPackages));
+            break;
+        case "whereCoverageExists":
+            if  (totalPackages > 0) {
+                result = Math.floor(score / totalPackages);
+            } else {
+                result = 0;
+            } 
+            break;
+        case "increasing":
+            result = numberIncreasing;
+            break;
+        case "decreasing":
+            result = numberDecreasing;
+            break;
+        case "static":
+            result = numberStatic;
+            break;
+        case "score":
+            result = Math.floor(score);
+            break;
+        case "servicesWithoutPackages":
+            result = servicesWithoutPackages;
+            break;
+        case "totalPackages":
+            result = totalPackages;
+            break;
+        case "averageOfAveragePackageImprovement":
+            if  (totalPackages > 0) {
+                result =  (Math.floor(100 * sumOfAverageImprovementPerMonth / totalPackages)) / 100;
+            } else {
+                result = 0;
+            }
+            break;
+        default:
+            alert ("unknown statsType: " + statsType)
+            console.warn("unknown statsType: " + statsType);
+            break;          
+    }
+    return result
+}
+
+//
+// Define a Service object proto
+//
+            
+function Service (shortName, owner, name, packages) {
+    this.shortName = shortName;
+    this.owner = owner;
+    this.name = name;
+    this.packages = packages;
+}
+
+Service.prototype.listPackages = function(teamName) {
+    var output = "Packages</br>";
+    if (typeof(this.packages) != "undefined") {
+        for (var ii = 0; ii < this.packages.length ; ii++) {
+            output += "<a onClick='showPackage(\"" + teamName + "\",\"" +this.shortName + "\",\"" + this.packages[ii].shortName + "\")'>" + this.packages[ii].shortName + "</br>";
+        }
+    }
+    return output + "<a onClick='parseCoverageStatsOntoPage(\"" + teamName  + "\")'>^ top ^</a>";
+};
+
+//
+// Define a CodePackage object proto 
+//
+function CodePackage (shortName, startCoveragePercentage, endCoveragePercentage, startTimestamp, endTimestamp) {
+    this.shortName = shortName;
+    this.startCoveragePercentage = startCoveragePercentage;
+    this.endCoveragePercentage = endCoveragePercentage;
+    this.startTimestamp = startTimestamp;
+    this.endTimestamp = endTimestamp;
+    this.dateSpanInDays = Math.floor((endTimestamp - startTimestamp) / (60*60*24));
+    //
+    // If the timeframe for a change is very small we can get massive increases or decreases per month
+    // So smooth out the outliers a bit in a simplistic way
+    //
+    var result = (endCoveragePercentage - startCoveragePercentage) / ( (endTimestamp - startTimestamp) / (60*60*24*30) );
+    if (result > 10) {
+        result = 10;
+    } else if (result < -10) {
+        result = -10;
+    }
+    this.averageImprovementPerMonth = (Math.floor(100 * result)) / 100;
+}
+
+CodePackage.prototype.toString = function(teamName) {
+    var riseFall = ""
+    if (this.endCoveragePercentage > this.startCoveragePercentage) {
+        riseFall = "</br>Coverge Rising";
+    } else if (this.endCoveragePercentage == this.startCoveragePercentage) {
+        riseFall = "</br>Coverage Static";
+    } else {
+        riseFall = "</br>Coverge Falling"; 
+    }
+    return "Package: " + this.shortName + "</br>startCov: " + this.startCoveragePercentage + "</br>endCov: " + this.endCoveragePercentage + "</br>over: " + this.dateSpanInDays + " days</br>avergeImprovementPerMonth: " + this.averageImprovementPerMonth + riseFall + "</br><a onClick='parseCoverageStatsOntoPage(\"" + teamName  + "\")'>^ top ^</a>";
+}
+
+//
+// This does the heavy lifting of the code coverage stuff - getting the data using ajax and parsing it
+// It relies on a go program that takes the raw JSon from jenkins and cross tabilates it against a CSV of the servies
+// ownership data and then spits out a JSON summary that this function then ajaxes in and assimilates.
+//
+function createTestSummary (weekNumber) {
+    /*
+    Talked to Ryan about this and he gave me these 4 URLs that cover what builds exist, their names, history for one buld , and the code coverage stat for an individual build respectively
+    http://jenkins01-global01-test.i.hailocab.com:3000/builds
+    http://jenkins01-global01-test.i.hailocab.com:3000/builds/names
+    http://jenkins01-global01-test.i.hailocab.com:3000/builds/com.hailocab.service.charging
+    http://jenkins01-global01-test.i.hailocab.com:3000/builds/com.hailocab.service.charging/coverage
+    */
+    //
+    // I've parsed all the above with a go program into 
+    // http://localhost:8000/jira/data/weekXX/codeCoverage.json and 
+    //
+    var fullHost = location.protocol+'//'+location.hostname+(location.port ? ':'+location.port: '');
+    var response = "";
+    var form_data = {
+        username: "username",
+        password: "password"
+    };
+    var teams = new Array ();
+    $.ajax({
+        type: "GET", 
+        url: fullHost + "/~geno/jira/data/week" + weekNumber + "/codeCoverage.json" , 
+        data: form_data,
+        success: function(response)
+        {
+            //
+            // For some reason the json wont parse normally using parseJSON or JSON.parse though it is valid !!!
+            // Spent ages permuting attempts then bespoked it in a fit of fury and annoyance
+            //
+            
+            for (var teamName in response) 
+            {
+                var services = new Array ();
+                for (ii = 0 ; ii < response[teamName].ServicesList.length; ii++) {
+                    for (var svcData in response[teamName].ServicesList[ii]) {
+                        var serviceShortName, owner, Name
+                        switch (svcData) {
+                            case "ShortName":
+                                serviceShortName = response[teamName].ServicesList[ii][svcData];
+                                break;
+                            case "Owner":
+                                owner = response[teamName].ServicesList[ii][svcData];
+                                break;
+                            case "Name":
+                                name = response[teamName].ServicesList[ii][svcData];
+                                break;
+                        } 
+                        if (svcData == "Packages") {
+                            var packages = new Array ()
+                            for (jj = 0 ; jj < response[teamName].ServicesList[ii][svcData].length; jj++) {
+                                var shortName,startCoveragePercentage,endCoveragePercentage, startTimestamp, endTimestamp
+                                for (var pkg in response[teamName].ServicesList[ii][svcData][jj]) {
+                                    switch (pkg) {
+                                        case "ShortName":
+                                            shortName = response[teamName].ServicesList[ii][svcData][jj][pkg];
+                                            break;
+                                        case "StartCoveragePercentage":
+                                            startCoveragePercentage = response[teamName].ServicesList[ii][svcData][jj][pkg];
+                                            break;
+                                        case "EndCoveragePercentage":
+                                            endCoveragePercentage = response[teamName].ServicesList[ii][svcData][jj][pkg];
+                                            break;
+                                        case "StartTimestamp":
+                                            startTimestamp = response[teamName].ServicesList[ii][svcData][jj][pkg];
+                                            break;
+                                        case "EndTimestamp":
+                                            endTimestamp = response[teamName].ServicesList[ii][svcData][jj][pkg];
+                                            break;
+                                    } 
+                                }
+                                var thisPackage = new CodePackage(shortName,startCoveragePercentage,endCoveragePercentage,startTimestamp, endTimestamp);
+                                packages.push(thisPackage);
+                            }
+                            services.push (new Service (serviceShortName, owner, name, packages))
+
+                        }
+                    } 
+                }
+                teams.push (new Team (teamName, services))
+            }
+            //var output
+            //for (kk = 0 ; kk < teams.length; kk++) {
+            //    output+=teams[kk].toString() + "</br>";
+            //    //console.log (teams[kk]);
+            //}        
+            //$("#coverageCheck").html(output);
+            //
+            // Hack - store the teams in a global array - yuck
+            //
+            global_teams = teams
+            parseCoverageStatsOntoPage ();
+        },
+        error: function(xhr,status,error)
+        {
+            console.warn("ajax error: xhr.status: " + xhr.status);
+            console.warn("ajax error: xhr.statusText: " + xhr.statusText);
+            console.warn("ajax error: xhr.readyState: " + xhr.readyState);
+            console.warn("ajax error: xhr.responseText: " + xhr.responseText);
+            console.warn("ajax error: xhr.responseXML: " + xhr.responseXML);
+            console.warn("ajax error: textStatus: " + status);
+            console.warn("ajax error: errorThrown: " + error);
+        },
+        dataType: "json"//set to JSON    
+    })   
+}
+</script>
+
+</BODY>
+</HTML>
